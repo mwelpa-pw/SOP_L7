@@ -21,7 +21,12 @@ static inline void msg_to_network(message_t *m) {
     m->result = htonl(m->result);
     m->status = htonl(m->status);
 }
+/*
+wiadomosc wyslana siecia musi zawsze 
+byc zakodowana htonl, a potem ja odkodowujemy ntohl
 
+NIE KONWERTUJE SIE POJEDYNCZYCH BAJTOW
+*/
 static inline void msg_to_host(message_t *m) {
     m->op1    = ntohl(m->op1);
     m->op2    = ntohl(m->op2);
@@ -29,5 +34,16 @@ static inline void msg_to_host(message_t *m) {
     m->result = ntohl(m->result);
     m->status = ntohl(m->status);
 }
+
+/*
+EPIPE = "Broken pipe" = piszesz do gniazda/pipe, którego druga strona już zamknęła.
+Konkretnie: Twój bulk_write(fd, ...) zwraca -1 z errno = EPIPE w sytuacji, gdy:
+
+Klient zrobił close() na swoim końcu połączenia, ALBO
+Klient się wywalił/został zabity (ten sam efekt, kernel zamyka jego deskryptory), ALBO
+Klient został odłączony fizycznie (kabel sieciowy wyrwany, w przypadku TCP)
+
+how2: sethandler(SIG_IGN, SIGPIPE);
+*/
 
 #endif
