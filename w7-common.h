@@ -57,6 +57,16 @@ int make_local_socket(char* name, struct sockaddr_un* addr)
     return socketfd;
 }
 
+int UDP_make_local_socket(char* name, struct sockaddr_un* addr) {
+    int socketfd;
+    if ((socketfd = socket(PF_UNIX, SOCK_DGRAM, 0)) < 0)
+        ERR("socket");
+    memset(addr, 0, sizeof(struct sockaddr_un));
+    addr->sun_family = AF_UNIX;
+    strncpy(addr->sun_path, name, sizeof(addr->sun_path) - 1);
+    return socketfd;
+}
+
 // ---------------------------------------------------------------------
 // connect_local_socket  [KLIENT — UNIX domain]
 // ---------------------------------------------------------------------
@@ -124,6 +134,15 @@ int make_tcp_socket(void)
 {
     int sock;
     sock = socket(PF_INET, SOCK_STREAM, 0);
+    if (sock < 0)
+        ERR("socket");
+    return sock;
+}
+
+// wewnetrznie uzywana w bind_udp_socket
+int make_udp_socket(void) {
+    int sock;
+    sock = socket(PF_INET, SOCK_DGRAM, 0);
     if (sock < 0)
         ERR("socket");
     return sock;
@@ -206,6 +225,24 @@ int bind_tcp_socket(uint16_t port, int backlog_size)
     struct sockaddr_in addr;
     int socketfd, t = 1;
     socketfd = make_tcp_socket();
+    memset(&addr, 0, sizeof(struct sockaddr_in));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, &t, sizeof(t)))
+        ERR("setsockopt");
+    if (bind(socketfd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+        ERR("bind");
+    if (listen(socketfd, backlog_size) < 0)
+        ERR("listen");
+    return socketfd;
+}
+
+int bind_udp_socket(uint16_t port, int backlog_size)
+{
+    struct sockaddr_in addr;
+    int socketfd, t = 1;
+    socketfd = make_udp_socket();
     memset(&addr, 0, sizeof(struct sockaddr_in));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
