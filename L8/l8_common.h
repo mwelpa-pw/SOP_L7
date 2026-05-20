@@ -7,7 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/epoll.h>
+#ifdef __linux__
+    #include <sys/epoll.h>
+#endif
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>

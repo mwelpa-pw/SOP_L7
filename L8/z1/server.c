@@ -17,31 +17,51 @@ typedef struct {
     int top;
     pthread_cond_t cond;
     pthread_mutex_t mtx;
-} stack_t;
+} adiutant_stack_t;
 
-void print_message(message_t mes, int n) {
+void print_message(message_t mes) {
     char* rodzajOddzialu = "nasz";
     if (mes.P == 1) rodzajOddzialu = "wrogi"; 
-    printf("%s oddzial %.*s byl widziany na pozycji %d:%d", 
-        rodzajOddzialu, (int)(n - 3), mes.oddzial, mes.X, mes.Y);
+    printf("%s oddzial %s byl widziany na pozycji %d:%d\n", 
+        rodzajOddzialu, mes.oddzial, mes.X, mes.Y);
 }
 
 void* thread_work(void *arg) {
-    stack_t *stack = (stack_t*)arg;
+    adiutant_stack_t *adiutant_stack = (adiutant_stack_t*)arg;
     message_t personal_message;
 
-    pthread_mutex_lock(&(stack->mtx)); // blokuje bo chce sprawdzic stos
-    while (stack->top == 0) {
-        pthread_cond_wait(&(stack->cond), &(stack->mtx)); // zwalnia mutex i usypie
-    }
-    // po obudzeniu blokuje
+    while (1) {
+        pthread_mutex_lock(&(adiutant_stack->mtx)); // blokuje bo chce sprawdzic stos
+        while (adiutant_stack->top == 0) {
+            pthread_cond_wait(&(adiutant_stack->cond), &(adiutant_stack->mtx)); // zwalnia mutex i usypia sie
+            // po obudzeniu przez system (cond_signal) blokuje mutex
+        }
+        adiutant_stack->top--;
+        memcpy(&personal_message, &(adiutant_stack->data[adiutant_stack->top]), sizeof(message_t));
+        // lub *personal_message = adiutant_stack->data[adiutant_stack->top];
+        pthread_mutex_unlock(&(adiutant_stack->mtx));
 
-    pthread_mutex_unlock(&(stack->mtx));
+        print_message(personal_message);
+    }
+    return NULL;
+}
+
+sig_atomic_t Work = 1;
+
+void sigintHandler(int sig) {
+    if (sig == SIGINT) 
+        Work = 0;
 }
 
 int main(int argc, char** argv) {
+    if (argc < 2) {
+        fprintf(stderr, "Użycie: %s <port>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
     char* port = argv[1];
     // Jak sprawdzac czy wiadomosc jest zle sformatowana?
+    sethandler(sigintHandler, SIGINT);
 
     // obsluga wiadomosci
     message_t buf;
@@ -50,32 +70,46 @@ int main(int argc, char** argv) {
     int n; // size of gotten DGRAM
     // obsluga watkow
     pthread_t adiuncts[5];
-    stack_t stack {
-        .top = 0;
+    adiutant_stack_t adiutant_stack = {
+        .top = 0,
         .cond = PTHREAD_COND_INITIALIZER,
         .mtx = PTHREAD_MUTEX_INITIALIZER
     };
     // lub
-    // stack.top = 0;
-    // pthread_mutex_init(&stack.mtx, NULL);
-    // pthread_cond_init(&stack.cond, NULL);
+    // adiutant_stack.top = 0;
+    // pthread_mutex_init(&adiutant_stack.mtx, NULL);
+    // pthread_cond_init(&adiutant_stack.cond, NULL);
 
     for (int i = 0; i < 5; i++) {
-        pthread_create(&adiuncts[i], NULL, thread_work, &stack);
+        pthread_create(&adiuncts[i], NULL, thread_work, &adiutant_stack);
     }
 
     // tworzenei socketu i bindowanie
     int sock = create_and_bind_udp_socket(atoi(port));
-    while (1) {
+    while (Work) {
+        memset(&buf, 0, sizeof(message_t)); // Czyścimy całą strukturę zerami
+        // recvfrom blokujace
         n = recvfrom(sock, &buf, sizeof(buf), 0, (struct sockaddr*)&client_addr, &addrlen); 
         // castujemy, bo recvfrom jest uniwersalne
         if (n < 0) 
             ERR("recvfrom");
 
+        pthread_mutex_lock(&adiutant_stack.mtx);
+
+        if (adiutant_stack.top < 16) {
+            memcpy(&(adiutant_stack.data[adiutant_stack.top]), &buf, sizeof(message_t));
+            adiutant_stack.top++;
+
+            pthread_cond_signal(&adiutant_stack.cond);
+        }
+
+        pthread_mutex_unlock(&adiutant_stack.mtx);
         // push message na stos
         // sygnal na conditional vari
-         
     }
 
+    for (int i = 0; i < 5; i++) 
+        pthread_join(adiuncts[i], NULL);
 
+    
 }
